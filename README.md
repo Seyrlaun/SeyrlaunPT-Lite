@@ -1,4 +1,4 @@
-# Seyrlaun Lite
+# SeyrlaunPT Lite
 
 An open-source path tracer for taking screenshots in Horizon.
 Hold the camera still and let the image get cleaner as it renders.
