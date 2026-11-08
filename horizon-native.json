@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "id": "offline_pt_lite",
+  "version": "0.1.0-alpha.2",
+  "game": "26.3",
+  "horizon": "9d979caa48a3bb58203319b9ea044db58c38e0d8",
+  "mixins": "5a64af938ec86b00d53d16a408aabc0038fb3e57"
+}

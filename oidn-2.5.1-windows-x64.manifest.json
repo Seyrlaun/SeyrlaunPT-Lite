@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "product": "Intel Open Image Denoise",
+  "version": "2.5.1",
+  "platform": "windows-x64",
+  "packageRoot": "oidn-2.5.1.x64.windows",
+  "installPrefix": "native-tools/offline_pt_lite/oidn",
+  "source": {
+    "repository": "https://github.com/RenderKit/oidn",
+    "revision": "v2.5.1",
+    "releaseUrl": "https://github.com/RenderKit/oidn/releases/tag/v2.5.1",
+    "archiveUrl": "https://github.com/RenderKit/oidn/releases/download/v2.5.1/oidn-2.5.1.x64.windows.zip",
+    "archiveName": "oidn-2.5.1.x64.windows.zip",
+    "archiveBytes": 56619412,
+    "archiveSha256": "F11F91BC072A5E3A564515724CB72AB8FCFBC445C84A84C197FF9B16CC01396F"
+  },
+  "provenance": {
+    "recordedDate": "2026-11-08",
+    "archiveDigestEvidenceUrl": "https://github.com/RenderKit/oidn/releases/expanded_assets/v2.5.1",
+    "method": "The local official archive digest was recorded on 2026-11-06 against the pinned official release. The packager rechecks that archive and hashes every selected entry before and after extraction.",
+    "selection": "The unmodified denoise application, all 15 upstream DLLs, and the complete 7-file upstream doc directory. Benchmarks, tests, headers, import libraries and CMake development files are excluded.",
+    "scope": "A pinned runtime allowlist, not a latest-version claim, signature verification, complete legal audit or proof of a public installation test."
+  },
+  "license": {
+    "oidnLicense": "Apache-2.0",
+    "thirdPartyTerms": "Bundled dependencies have their own terms. Retain the complete upstream doc directory and its third-party-programs documents.",
+    "noticePaths": [
+      "doc/LICENSE.txt",
+      "doc/third-party-programs.txt",
+      "doc/third-party-programs-oneTBB.txt",
+      "doc/third-party-programs-DPCPP.txt"
+    ]
+  },
+  "fileCount": 23,
+  "totalBytes": 81349923,
+  "files": [
+    {
+      "path": "bin/oidnDenoise.exe",
+      "bytes": 128432,
+      "sha256": "2A82ADF41A768313642A5A375C5DDF23B42E78564D6C76AD79542C4F0CD33445"
+    },
+    {
+      "path": "bin/OpenImageDenoise.dll",
+      "bytes": 190384,
+      "sha256": "64CEB78B1E10342A5323EAD6F346D7F2B2E1C69FE17C399BEBBCEF3DF26BED16"
+    },
+    {
+      "path": "bin/OpenImageDenoise_core.dll",
+      "bytes": 50634160,
+      "sha256": "18557E4424297ED892F2A0285DD565EC9065234A84BAC1B84D16FD995371A422"
+    },
+    {
+      "path": "bin/OpenImageDenoise_device_cpu.dll",
+      "bytes": 663984,
+      "sha256": "E22617F115AE4056C3417983545AEBED1D75AC7C1BACA086C39D18A84BF47D78"
+    },
+    {
+      "path": "bin/OpenImageDenoise_device_sycl.dll",
+      "bytes": 715696,
+      "sha256": "EFDC2CC3ED34F3E2A3CF121BBB30971C189DF1860B3EEF5E22032EBCA13ACF4C"
+    },
+    {
+      "path": "bin/OpenImageDenoise_device_cuda.dll",
+      "bytes": 3251632,
+      "sha256": "2216A1F96AE5C1C0B0A879B6A1F6C5FDAEE409473DAFB96751B1C27C29D321BA"
+    },
+    {
+      "path": "bin/OpenImageDenoise_device_hip.dll",
+      "bytes": 14472624,
+      "sha256": "8EECA7E5D2A1A07E48D1B7D52821C1D3FB7B51A6A87DECFA400545250E1B1385"
+    },
+    {
+      "path": "bin/sycl9.dll",
+      "bytes": 3364984,
+      "sha256": "284F530EA2628B82AC390F7A3FBD9F59C0AC49441D99014533C5142B21A4E05B"
+    },
+    {
+      "path": "bin/tbb12.dll",
+      "bytes": 352144,
+      "sha256": "454EA95817CD33B837540BBFE21F6BF415F6FBF2AD712C2353896D17492E763D"
+    },
+    {
+      "path": "bin/tbbbind.dll",
+      "bytes": 290184,
+      "sha256": "613A327BB40BBB94DE51BF44E340CD3507F69BD756AF78F65AA68A56ACBE24A3"
+    },
+    {
+      "path": "bin/tbbbind_2_0.dll",
+      "bytes": 51080,
+      "sha256": "079C0B806DEB20F25373DC8CCEC25E7177B1C0122D4DE62581511E3E2AD62A10"
+    },
+    {
+      "path": "bin/tbbbind_2_5.dll",
+      "bytes": 53136,
+      "sha256": "F6E5705D2958C6469613631AC204395E2EB323BF21208BB407D1AB5B0DBE95DA"
+    },
+    {
+      "path": "bin/ur_adapter_level_zero.dll",
+      "bytes": 1357432,
+      "sha256": "7C3D21ADC1A43C6FFA9A2D6D9332DEC3DC8BE0A14882D1BF3668B0584B9CFEEC"
+    },
+    {
+      "path": "bin/ur_adapter_level_zero_v2.dll",
+      "bytes": 1266808,
+      "sha256": "CE584F1FE8CF15B8B4C761819D3E00A1E621BBDA461CCF97475209121919CEB3"
+    },
+    {
+      "path": "bin/ur_loader.dll",
+      "bytes": 1109112,
+      "sha256": "BD41294460D41EABF1E25A58CD924B02148F569251167398C2B60E65ECFC3A50"
+    },
+    {
+      "path": "bin/ur_win_proxy_loader.dll",
+      "bytes": 43640,
+      "sha256": "1B84F40BE694C2046C1BFB79454F02E73B32ED6F0EFC649C00207CD9A8DA7B8A"
+    },
+    {
+      "path": "doc/CHANGELOG.md",
+      "bytes": 21416,
+      "sha256": "4B6B5E44F9409C05C6296C79E5E204B7254B3BAAB761BA4CBD256964B6699730"
+    },
+    {
+      "path": "doc/LICENSE.txt",
+      "bytes": 11560,
+      "sha256": "3DDF9BE5C28FE27DAD143A5DC76EEA25222AD1DD68934A047064E56ED2FA40C5"
+    },
+    {
+      "path": "doc/README.md",
+      "bytes": 125785,
+      "sha256": "968C18060AAC74034B1F316EB37C916B9569C49DAA150C0412ED118BA94E3DB2"
+    },
+    {
+      "path": "doc/readme.pdf",
+      "bytes": 3193212,
+      "sha256": "2112CF88C55B62DF9826A3D6C23A1DDE772A137317552E71FA94FC462BA3235C"
+    },
+    {
+      "path": "doc/third-party-programs.txt",
+      "bytes": 34574,
+      "sha256": "43905DB59C86BC1DE8CEE0F24878D9A127C319D87C57F53F68D904043EEFE98F"
+    },
+    {
+      "path": "doc/third-party-programs-oneTBB.txt",
+      "bytes": 11828,
+      "sha256": "C4E2B169BC786E478A914AEA11F19F2EF4C0985C1B61E2154E8DEB42B92591B6"
+    },
+    {
+      "path": "doc/third-party-programs-DPCPP.txt",
+      "bytes": 6116,
+      "sha256": "B380A1F21DE07193E8DCDD7C6CADFB9C1452C9C99FA0B9C1F9FC26E55C5F41D1"
+    }
+  ]
+}

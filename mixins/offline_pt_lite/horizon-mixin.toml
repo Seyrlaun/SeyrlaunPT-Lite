@@ -1,0 +1,270 @@
+[mod]
+id = "offline_pt_lite"
+version = "0.1.0-alpha.2"
+priority = 100
+
+[compatibility]
+horizon_revision = "9d979caa48a3bb58203319b9ea044db58c38e0d8"
+
+[[module]]
+id = "pt-ctm"
+file = "crates/horizon-client-render/src/lib.rs"
+name = "ctm"
+source = "assets_ctm.rs"
+visibility = "pub"
+
+[[module]]
+id = "pt-pbr"
+file = "crates/horizon-client-render/src/lib.rs"
+name = "pbr"
+source = "assets_pbr.rs"
+visibility = "pub"
+
+[[module]]
+id = "pt-model-choices"
+file = "crates/horizon-assets/src/blockstate/choice.rs"
+name = "native_pt_assets"
+source = "assets_choices.rs"
+
+[[module]]
+id = "pt-model-materials"
+file = "crates/horizon-client-render/src/models/catalog.rs"
+name = "native_pt_assets"
+source = "assets_catalog.rs"
+
+[[module]]
+id = "pt-assets-loader"
+file = "crates/horizon-client-render/src/assets.rs"
+name = "native_pt_assets"
+source = "assets_loader.rs"
+
+[[injection]]
+id = "pt-load-assets"
+target = "horizon_client_render::assets::Assets::reload"
+kind = "HEAD"
+cancellable = true
+helper = "assets_loader_head.rs"
+bindings = [
+  { name = "root", ty = "&std::path::Path", value = "root" },
+  { name = "assets", ty = "&Assets", value = "self" },
+]
+
+[[injection]]
+id = "pt-load-assets-server"
+target = "horizon_client_render::assets::Assets::reload_for_server"
+kind = "HEAD"
+cancellable = true
+helper = "assets_loader_server_head.rs"
+bindings = [
+  { name = "root", ty = "&std::path::Path", value = "root" },
+  { name = "assets", ty = "&Assets", value = "self" },
+]
+
+[[module]]
+id = "pt-sprites"
+file = "crates/horizon-client-render/src/sprites.rs"
+name = "native_pt_assets"
+source = "assets_sprites.rs"
+
+[[injection]]
+id = "pt-sprite-layout"
+target = "horizon_client_render::sprites::Sprites::lay_out"
+kind = "HEAD"
+cancellable = true
+helper = "assets_sprite_layout_head.rs"
+bindings = [
+  { name = "sprites", ty = "&mut Sprites", value = "&mut *self" },
+  { name = "pixels", ty = "bool", value = "pixels" },
+]
+
+[[injection]]
+id = "pt-sprite-load"
+target = "horizon_client_render::sprites::Sprites::load"
+kind = "HEAD"
+cancellable = true
+helper = "assets_sprite_load_head.rs"
+bindings = [
+  { name = "sprites", ty = "&mut Sprites", value = "&mut *self" },
+  { name = "root", ty = "&std::path::Path", value = "root" },
+  { name = "name", ty = "&str", value = "name" },
+]
+
+[[module]]
+id = "pt-sprite-cache"
+file = "crates/horizon-client-render/src/sprite_cache.rs"
+name = "native_pt_assets"
+source = "assets_sprite_cache.rs"
+
+[[injection]]
+id = "pt-sprite-cache-key"
+target = "horizon_client_render::sprite_cache::fingerprint"
+kind = "HEAD"
+cancellable = true
+helper = "assets_sprite_cache_head.rs"
+bindings = [
+  { name = "root", ty = "&std::path::Path", value = "root" },
+]
+
+[[module]]
+id = "pt-mesher"
+file = "crates/horizon-client-render/src/mesher.rs"
+name = "native_pt_assets"
+source = "assets_mesher.rs"
+
+[[injection]]
+id = "pt-mesh-connected-surfaces"
+target = "horizon_client_render::mesher::Mesher<'_>::mesh_reusing"
+kind = "HEAD"
+cancellable = true
+helper = "assets_mesher_head.rs"
+bindings = [
+  { name = "mesher", ty = "&mut Mesher<'_>", value = "&mut *self" },
+  { name = "region", ty = "&[[Option<&Chunk>; 3]; 3]", value = "region" },
+  { name = "sy", ty = "i32", value = "sy" },
+  { name = "out", ty = "&mut SectionMesh", value = "&mut out" },
+  { name = "scratch", ty = "&mut MeshScratch", value = "&mut *scratch" },
+]
+
+[[module]]
+id = "pt_config_render"
+file = "crates/horizon-client-render/src/lib.rs"
+name = "native_pt_config"
+source = "game/config.rs"
+visibility = "pub"
+
+[[module]]
+id = "pt_config_client"
+file = "crates/horizon-client/src/lib.rs"
+name = "native_pt_config"
+source = "game/config_reexport.rs"
+visibility = "pub"
+
+[[module]]
+id = "pt_game_render"
+file = "crates/horizon-client/src/game.rs"
+name = "offline_pt_render"
+source = "game/render.rs"
+
+[[module]]
+id = "pt_native_ui"
+file = "crates/horizon-client/src/game/native_hooks.rs"
+name = "offline_pt_native_ui"
+source = "game/native_ui.rs"
+
+[[injection]]
+id = "pt_game_render_head"
+target = "horizon_client::game::Game<'_>::render"
+kind = "HEAD"
+cancellable = true
+helper = "game/render_head.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "pt_screenshot_guard"
+target = "horizon_client::game::chat::Game<'_>::take_screenshot"
+kind = "HEAD"
+cancellable = true
+helper = "game/screenshot_guard.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "pt_world_icon_guard"
+target = "horizon_client::game::Game<'_>::tick_world_icon"
+kind = "HEAD"
+cancellable = true
+helper = "game/world_icon_guard.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+]
+
+[[injection]]
+id = "pt_control_screenshot_guard"
+target = "horizon_client::game::control::Game<'_>::control_command"
+kind = "HEAD"
+cancellable = true
+helper = "game/control_screenshot_guard.rs"
+bindings = [
+  { name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "line", ty = "&str", value = "line" },
+]
+
+[[injection]]
+id = "pt_native_mods"
+target = "horizon_client::game::native_hooks::Game<'_>::native_mods"
+kind = "HEAD"
+helper = "game/mods.rs"
+bindings = [
+{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "mods", ty = "&mut Vec<NativeMod>", value = "&mut *mods" },
+]
+
+[[injection]]
+id = "pt_native_key"
+target = "horizon_client::game::native_hooks::Game<'_>::native_key"
+kind = "HEAD"
+helper = "game/key.rs"
+bindings = [
+{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "pressed", ty = "bool", value = "pressed" },
+]
+
+[[injection]]
+id = "pt_native_settings"
+target = "horizon_client::game::native_hooks::Game<'_>::native_settings"
+kind = "HEAD"
+helper = "game/settings.rs"
+bindings = [
+{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "mod_id", ty = "&str", value = "mod_id" },
+  { name = "buttons", ty = "&mut Vec<String>", value = "&mut *buttons" },
+]
+
+[[injection]]
+id = "pt_native_settings_click"
+target = "horizon_client::game::native_hooks::Game<'_>::native_settings_click"
+kind = "HEAD"
+helper = "game/settings_click.rs"
+bindings = [
+{ name = "game", ty = "&mut Game<'_>", value = "&mut *self" },
+  { name = "mod_id", ty = "&str", value = "mod_id" },
+  { name = "button", ty = "usize", value = "button" },
+]
+
+[[module]]
+id = "pt-engine"
+file = "crates/horizon-client-render/src/gfx.rs"
+name = "path_tracer"
+source = "renderer/path_tracer.rs"
+
+[[module]]
+id = "pt-runtime"
+file = "crates/horizon-client-render/src/gfx.rs"
+name = "native_pt_runtime"
+source = "renderer/runtime.rs"
+
+[[module]]
+id = "pt-screenshot"
+file = "crates/horizon-client-render/src/gfx.rs"
+name = "native_pt_screenshot"
+source = "renderer/screenshot.rs"
+
+[[injection]]
+id = "pt_draw"
+target = "horizon_client_render::gfx::Renderer::draw_frame"
+kind = "HEAD"
+cancellable = true
+helper = "renderer/draw.rs"
+bindings = [
+    { name = "renderer", ty = "&mut Renderer", value = "&mut *self" },
+    { name = "frame", ty = "&Frame", value = "frame" },
+]
+
+[[crate]]
+id = "shaders"
+path = "shader_assets"
+dependent = "horizon-client-render"

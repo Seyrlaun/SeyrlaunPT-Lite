@@ -1,0 +1,19 @@
+Offline PT Lite
+Copyright 2026 Offline PT Lite contributors
+
+Original Offline PT Lite additions and native packaging tooling are licensed
+under the Apache License, Version 2.0. See LICENSE-APACHE-2.0 in the tooling
+source and data/LICENSE-Apache-2.0.txt in the native bundle.
+
+This bundle contains code adapted from Horizon:
+Copyright (c) 2026 Ludovic Marie and the Horizon contributors
+Horizon portions retain their MIT license and original copyright notice.
+The complete Horizon MIT notice is in data/LICENSE-Horizon.txt in the bundle
+and in the original Horizon repository's LICENSE.
+
+Offline PT Lite modifies and adapts Horizon's rendering, material loading,
+meshing, game-render integration and native settings for path tracing.
+It is not made or endorsed by the Horizon project or Mojang.
+
+This notice does not change either license. It grants no rights to Pro,
+its weather controller, Minecraft resources, third-party packs or worlds.

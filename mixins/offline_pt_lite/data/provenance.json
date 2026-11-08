@@ -1,0 +1,19 @@
+{
+  "description": "Native packaging of the preserved Offline PT Lite implementation.",
+  "game": "26.3",
+  "horizon": "9d979caa48a3bb58203319b9ea044db58c38e0d8",
+  "license_scope": "Original Offline PT Lite additions and packaging; Horizon portions retain their MIT license.",
+  "limitations": [
+    "Exact upstream revision required; no automatic compatibility repinning.",
+    "Preserved Lite renderer, not Full; optional official OIDN runtime is distributed separately from this source-only bundle.",
+    "WGSL data is compiled by the bundled source-only shader asset crate.",
+    "Normal Horizon launcher authentication and ownership verification remain required."
+  ],
+  "lite": "9bfe66cb6a637ce2e52579e4f2dae9dc00fb120f",
+  "mixins": "5a64af938ec86b00d53d16a408aabc0038fb3e57",
+  "mod": "offline_pt_lite",
+  "publication_status": "Local test artifact; no upload performed.",
+  "release_license": "Apache-2.0",
+  "upstream_license": "MIT",
+  "version": "0.1.0-alpha.2"
+}
