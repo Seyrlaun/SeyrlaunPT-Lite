@@ -16,6 +16,38 @@ Lite is built for still images, not real-time gameplay.
 
 Runs as a Horizon native mod (`.hnmod`), not an Iris or OptiFine shader pack.
 
+<img width="2880" height="1736" alt="diowlmfe - Copy" src="https://github.com/user-attachments/assets/87b12e81-5e7e-488f-bd37-e4700234f781" />
+
+<details>
+<summary>View more screenshots</summary>
+<img width="2880" height="1755" alt="2026-11-05_21 11 39" src="https://github.com/user-attachments/assets/7f29ea54-726d-4e27-87da-30716dcd0a0f" />
+<img width="2880" height="1755" alt="2026-11-05_20 36 53" src="https://github.com/user-attachments/assets/c69ce389-0d11-412d-b93c-b759923b6502" />
+<img width="2880" height="1755" alt="2026-11-05_17 59 29" src="https://github.com/user-attachments/assets/6ccd5f79-0575-4404-8c3b-7cb4256a0f1e" />
+<img width="2880" height="1800" alt="jdsofkemokwfew" src="https://github.com/user-attachments/assets/1ab49af8-add6-4b27-acef-8babd5cd41c1" />
+<img width="2880" height="1800" alt="dwqiodjams" src="https://github.com/user-attachments/assets/c671c903-d4c2-417e-9b01-a7fa6778f8e4" />
+<img width="2592" height="1580" alt="2026-11-05_19 35 42_90" src="https://github.com/user-attachments/assets/7dfc0592-d026-4338-8541-b35c45e1dda5" />
+<img width="2880" height="1755" alt="2026-11-05_20 53 35" src="https://github.com/user-attachments/assets/cd3ed6ca-e157-478a-a9a8-78a55de52c07" />
+
+
+</details>
+
+<details>
+<summary>Output when you click f2</summary>
+Normal
+<img width="2880" height="1755" alt="2026-11-05_17 59 29-normal" src="https://github.com/user-attachments/assets/01d287d1-756d-400b-9da7-e0632aee95bb" />
+   
+Albedo
+<img width="2880" height="1755" alt="2026-11-05_17 59 29-albedo" src="https://github.com/user-attachments/assets/e00f141e-1c21-473a-b69e-619bfda92102" />
+
+Raw
+<img width="2880" height="1755" alt="2026-11-05_17 51 51-raw" src="https://github.com/user-attachments/assets/3db6ebde-4abf-4229-bba7-4efcc32f1a37" />
+
+Denoised
+<img width="2880" height="1755" alt="2026-11-05_17 59 29" src="https://github.com/user-attachments/assets/1ee611c5-6eb5-4961-8a8b-e3254b290b61" />
+
+</details>
+
+
 ## Install
 
 1. Open the release linked above and download the Windows ZIP ending in
