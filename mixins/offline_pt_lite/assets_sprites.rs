@@ -1,4 +1,19 @@
 use super::*;
+use crate::mipmap::Strategy;
+use std::hash::{DefaultHasher, Hash, Hasher};
+/// What decoding one texture gives, before it takes a layer.
+#[derive(Clone)]
+pub(crate) struct Decoded {
+    pub side: u32,
+    pub frames: Vec<Vec<u8>>,
+    /// The `.mcmeta` `animation` value, as text.
+    pub animation: Option<String>,
+    pub strategy: Strategy,
+    pub alpha_cutoff_bias: f32,
+    pub has_transparent: bool,
+    pub opaque: bool,
+    pub translucent: bool,
+}
 /// CTM tiles live outside `textures/`, but otherwise use the same sprite and
 /// material upload path. Keep their full resource identity for sidecar lookup.
 pub(crate) fn resource_path(root: &Path, name: &str) -> Option<std::path::PathBuf> {
@@ -15,9 +30,43 @@ pub(crate) fn resource_path(root: &Path, name: &str) -> Option<std::path::PathBu
     let prefix = if path.starts_with("optifine/ctm/") { "" } else { "textures/" };
     Some(root.join(format!("assets/{namespace}/{prefix}{path}.png")))
 }
+/// Paths, sizes and modification times of every file under `assets/*/textures`,
+/// summed so the directory order does not matter.
+pub(crate) fn native_pt_fingerprint(root: &Path) -> Option<u64> {
+    fn walk(dir: &Path, base: &Path, sum: &mut u64) -> Option<()> {
+        for entry in fs::read_dir(dir).ok()? {
+            let entry = entry.ok()?;
+            let meta = entry.metadata().ok()?;
+            if meta.is_dir() {
+                walk(&entry.path(), base, sum)?;
+                continue;
+            }
+            let mut hasher = DefaultHasher::new();
+            entry.path().strip_prefix(base).ok()?.hash(&mut hasher);
+            meta.len().hash(&mut hasher);
+            meta.modified().ok()?.hash(&mut hasher);
+            *sum = sum.wrapping_add(hasher.finish());
+        }
+        Some(())
+    }
+    let mut sum = 0x4f46464c49544531_u64;
+    for namespace in fs::read_dir(root.join("assets")).ok()? {
+        let namespace = namespace.ok()?.path();
+        let textures = namespace.join("textures");
+        if textures.is_dir() {
+            walk(&textures, root, &mut sum)?;
+        }
+        let ctm = namespace.join("optifine/ctm");
+        if ctm.is_dir() {
+            walk(&ctm, root, &mut sum)?;
+        }
+    }
+    Some(sum)
+}
 impl Sprites {
-    pub(crate) fn content_fingerprint(&self) -> Option<u64> {
-        self.disk.as_ref().map(|disk| disk.fingerprint())
+    pub(super) fn native_pt_load(&mut self, root: &Path, name: &str) -> Result<u32> {
+        let decoded = Self::native_pt_decode(root, name)?;
+        self.native_pt_register(name, decoded, !crate::pbr::has_maps(root, name))
     }
     pub(super) fn native_pt_lay_out(&mut self, pixels: bool) {
         let layers = self.native.len().max(1) as u64;
@@ -52,25 +101,11 @@ impl Sprites {
         }
         self.size = size;
     }
-    pub(super) fn native_pt_load(&mut self, root: &Path, name: &str) -> Result<u32> {
-        let cached = self.disk.as_ref().and_then(|d| d.get(name)).cloned();
-        let decoded = match cached {
-            Some(decoded) => decoded,
-            None => {
-                let decoded = Self::native_pt_decode(root, name)?;
-                if let Some(disk) = &mut self.disk {
-                    disk.insert(name, decoded.clone());
-                }
-                decoded
-            }
-        };
-        self.native_pt_register(name, decoded, !crate::pbr::has_maps(root, name))
-    }
     /// Read and decode one texture and its `.mcmeta`.
     pub(crate) fn native_pt_decode(
         root: &Path,
         name: &str,
-    ) -> Result<crate::sprite_cache::Decoded> {
+    ) -> Result<crate::sprites::native_pt_assets::Decoded> {
         let path = resource_path(root, name).ok_or("invalid sprite identifier")?;
         let metadata = match fs::read_to_string(path.with_extension("png.mcmeta")) {
             Ok(text) => {
@@ -148,7 +183,7 @@ impl Sprites {
             frames.push(frame);
         }
         let texture = texture_section(metadata.as_ref());
-        Ok(crate::sprite_cache::Decoded {
+        Ok(crate::sprites::native_pt_assets::Decoded {
             side,
             frames,
             animation: animation_text,
@@ -174,10 +209,10 @@ impl Sprites {
     pub(super) fn native_pt_register(
         &mut self,
         name: &str,
-        decoded: crate::sprite_cache::Decoded,
+        decoded: crate::sprites::native_pt_assets::Decoded,
         deduplicate: bool,
     ) -> Result<u32> {
-        let crate::sprite_cache::Decoded {
+        let crate::sprites::native_pt_assets::Decoded {
             side,
             frames,
             animation: animation_text,

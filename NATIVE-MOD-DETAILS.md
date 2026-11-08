@@ -1,9 +1,9 @@
-# Offline PT Lite technical notes
+# Seyrlaun Lite technical notes
 
 Experimental world-space path tracing for Horizon. This repository contains
 the complete native Rust integration and original WGSL, not a patched game.
 
-Version: `0.1.0-alpha.2`
+Version: `0.1.0-alpha.3`
 
 ## Source
 
@@ -34,7 +34,7 @@ native-mod build system. It is not an EXE or runtime DLL.
 ## Installation
 
 Use Horizon's native-mod installation flow with a release `.hnmod`, or use
-its **Add from GitHub** flow with the full alpha.2 release-page URL.
+its **Add from GitHub** flow with the full alpha.3 release-page URL.
 For pre-releases, a repository-home link can select another release or
 fall back to branch source. Review the native-code trust warning,
 explicitly build the selected native mods, then start the game through
@@ -58,7 +58,7 @@ The native manifest pins the tested versions:
 
 | Component | Revision |
 | --- | --- |
-| Horizon | `9d979caa48a3bb58203319b9ea044db58c38e0d8` |
+| Horizon v0.2.97 | `a3acb5f0d2f59d2d5ff21a5aa000809ba1e35e2f` |
 | horizon-mixins | `5a64af938ec86b00d53d16a408aabc0038fb3e57` |
 
 Do not casually change the compatibility pins. A different engine revision
@@ -66,9 +66,12 @@ needs a fresh source application, compilation and in-game compatibility check.
 
 ## Controls and scope
 
-F6 toggles path tracing by default; the key can be remapped. The mod's
-settings control rendering resolution, bounces, freeze and exposure.
+F6 toggles path tracing by default; the key can be remapped. F8 opens
+Lite's settings for rendering resolution, bounces, freeze and exposure.
 F2 OIDN is enabled by default and can be disabled in the same settings.
+In this compatibility alpha, avoid assigning PT keys that conflict with
+custom vanilla key mappings: the older input API translates those keys
+before the PT hook receives them.
 
 With PT enabled, F2 snapshots scene-linear HDR radiance and generates
 matching first-hit albedo and signed world-normal guides. A background
@@ -91,10 +94,26 @@ CTM/PBR integration and its original accumulation/material behavior. It
 does not include Pro, a weather controller or Full's extended camera/entity
 features. Screenshot integration does not change the preserved transport.
 
-Alpha limitation: Mods OFF disables PT and its key but does not remove
-compiled sprite/CTM/mesher hooks or already loaded materials. For complete
-removal, rebuild the instance without this mod. F6 is the ordinary render
-toggle.
+Alpha limitation: F6 disables PT but does not remove compiled
+sprite/CTM/mesher hooks or already loaded materials. For complete
+removal, rebuild the instance without this mod. This version supplies
+its own settings panel instead of relying on newer native-mod UI hooks
+that do not exist in v0.2.97.
+
+## Alpha.2 build failure
+
+Alpha.2 was verified against a different, newer Horizon source revision
+(`9d979ca`), not the official v0.2.97 source used by the launcher.
+It requires `horizon-client-render` and native UI/screenshot APIs that
+are absent from v0.2.97. The result is an `E_CRATE` failure before Rust
+compilation. This is a package compatibility bug, not an OIDN, Rust
+installation, account or instance-data problem.
+
+Alpha.3 ports the integration to v0.2.97's monolithic `horizon-client`,
+including its original draw/presentation and screenshot interfaces.
+Do not fix alpha.2 by merely changing its revision pin or crate name.
+Replace the package, then rebuild the same instance's native mods
+through the original launcher.
 
 ## Building and packaging
 

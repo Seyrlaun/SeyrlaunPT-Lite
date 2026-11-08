@@ -13,7 +13,7 @@ param(
     [Parameter(Mandatory)]
     [string]$OutputDirectory,
     [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$')]
-    [string]$Version = '0.1.0-alpha.2',
+    [string]$Version = '0.1.0-alpha.3',
     [switch]$VerifyOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -34,7 +34,7 @@ if (-not (Test-Path -LiteralPath $runtimeManifestPath -PathType Leaf)) {
 }
 $runtimeManifest = Get-Content -LiteralPath $runtimeManifestPath -Raw | ConvertFrom-Json
 $runtimePrefix = 'native-tools/offline_pt_lite/oidn'
-$horizon = '9d979caa48a3bb58203319b9ea044db58c38e0d8'
+$horizon = 'a3acb5f0d2f59d2d5ff21a5aa000809ba1e35e2f'
 $mixins = '5a64af938ec86b00d53d16a408aabc0038fb3e57'
 $officialArchiveHash = 'F11F91BC072A5E3A564515724CB72AB8FCFBC445C84A84C197FF9B16CC01396F'
 $officialArchiveUrl = 'https://github.com/RenderKit/oidn/releases/download/v2.5.1/oidn-2.5.1.x64.windows.zip'
@@ -210,6 +210,7 @@ try {
     }
     $documents = [ordered]@{
         'README.md' = Join-Path $metadataRoot 'OIDN-RELEASE.md'
+        'COMPATIBILITY-FIX.md' = Join-Path $metadataRoot 'COMPATIBILITY-FIX.md'
         'LICENSE' = if ($metadataLayout -eq 'developer') {
             Join-Path $metadataRoot 'LICENSE-APACHE-2.0'
         } else {
@@ -278,7 +279,7 @@ try {
     $records.Add((Get-FileRecord $to $manifestName))
     $releaseManifest = [ordered]@{
         schemaVersion = 1
-        product = 'Offline PT Lite'
+        product = 'Seyrlaun Lite'
         version = $Version
         platform = 'windows-x64'
         horizonRevision = $horizon

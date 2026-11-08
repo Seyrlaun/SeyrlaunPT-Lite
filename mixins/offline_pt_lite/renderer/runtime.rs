@@ -186,7 +186,7 @@ impl Renderer {
 use std::sync::mpsc;
 type CaptureResult = std::result::Result<[u32; 2], String>;
 struct PendingCapture {
-    request: ScreenshotRequest,
+    request: PathBuf,
     target_size: [u32; 2],
     capture: Option<path_tracer::Capture>,
     mapped: mpsc::Receiver<(u8, std::result::Result<(), String>)>,
@@ -197,7 +197,7 @@ impl State {
     fn begin_capture(
         &mut self,
         renderer: &mut Renderer,
-        request: ScreenshotRequest,
+        request: PathBuf,
         capture: path_tracer::Capture,
     ) {
         let (sender, mapped) = mpsc::channel();
@@ -270,7 +270,7 @@ impl State {
                     );
                     return;
                 };
-                let path = pending.request.path.clone();
+                let path = pending.request.clone();
                 let target_size = pending.target_size;
                 let (sender, receiver) = mpsc::channel();
                 match std::thread::Builder::new()
@@ -443,35 +443,13 @@ impl Renderer {
                 return Ok(false);
             }
             Some(wgpu::CurrentSurfaceTexture::Validation) => {
-                if self.acquire_validation_failures == 0 {
-                    if let Some(surface) = &self.surface {
-                        Self::configure(
-                            &self.device,
-                            surface,
-                            &self.surface_config(),
-                            self.hdr.as_ref(),
-                        );
-                    }
-                } else {
-                    self.recreate_surface()?;
-                }
-                self.acquire_validation_failures = self
-                    .acquire_validation_failures
-                    .saturating_add(1);
-                return Ok(false);
+                return Err("surface acquisition failed validation".into());
             }
         };
-        if surface_frame.is_some() {
-            self.acquire_validation_failures = 0;
-        }
         let size = [self.config.width, self.config.height];
         let target_texture = match (&surface_frame, &mut self.hdr) {
             (Some(_), Some(hdr)) => hdr.frame(&self.device, size),
-            (Some(f), None) => {
-                self.readback
-                    .target(&self.device, &f.texture, self.screenshot.is_some())
-                    .unwrap_or_else(|| f.texture.clone())
-            }
+            (Some(f), None) => f.texture.clone(),
             (None, _) => self.offscreen.clone().ok_or("no offscreen target")?,
         };
         let section_copies = self.section_copies.take();
@@ -486,12 +464,14 @@ impl Renderer {
                     )
             });
         if self.animated_textures {
-            let tick = if path_frame {
-                state.tracer.as_mut().unwrap().animation_tick(frame, size)
-            } else {
-                frame.ticks
-            };
-            self.animate(&mut encoder, tick);
+            self.animate(
+                &mut encoder,
+                if path_frame {
+                    state.tracer.as_mut().unwrap().animation_tick(frame, size)
+                } else {
+                    frame.ticks
+                },
+            );
             if !state.sprites.is_empty() {
                 state.copy_animated(self, &mut encoder);
             }
@@ -506,20 +486,7 @@ impl Renderer {
             frame.block_flicker,
             frame.boss_darken,
         );
-        let views = self.views(frame);
-        let pose = frame.bob * frame.spin;
-        let view_proj = views.primary().view_proj(pose);
-        let taa = !path_frame && !frame.title
-            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
-            && self.native.as_ref().is_none_or(|n| n.post.is_none());
-        let jittered = self
-            .world_post
-            .jitter(
-                [self.config.width, self.config.height],
-                taa,
-                view_proj,
-                frame.camera,
-            ) * view_proj;
+        let view_proj = self.view_projection(frame);
         if frame.title {
             self.panorama
                 .prepare(
@@ -530,7 +497,8 @@ impl Renderer {
                     frame.pitch,
                 );
         }
-        let view = views.primary().view;
+        let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
+        let view = crate::camera::view_matrix(frame.yaw, frame.pitch);
         let sun_angle = frame.sky.sun_angle.to_radians();
         let sun = Vec3::new(0.0, sun_angle.cos(), -sun_angle.sin());
         let (fog_color, fog) = if let Some(f) = frame.fog {
@@ -566,7 +534,7 @@ impl Renderer {
             )
         };
         let globals = Globals {
-            view_proj: jittered.to_cols_array_2d(),
+            view_proj: view_proj.to_cols_array_2d(),
             fog_color,
             fog,
             sky_color: [
@@ -578,8 +546,8 @@ impl Renderer {
             misc: [
                 1.0 - frame.sky.sky_light_factor,
                 frame.game_time,
-                views.primary().aspect,
-                views.primary().tan_half_fov,
+                aspect,
+                (frame.fov_degrees.to_radians() / 2.0).tan(),
             ],
             inverse_view: view.inverse().to_cols_array_2d(),
             sunrise: frame.sky.sunrise_color,
@@ -606,13 +574,6 @@ impl Renderer {
                 }
                 lights
             },
-            sunrise_fan: sunrise_fan::normals(frame.sky.sunrise_color[3], sun),
-            filtering: [
-                self.texture_filtering as f32,
-                self.sprite_textures[0].width() as f32,
-                0.0,
-                0.0,
-            ],
         };
         self.uploads
             .buffer(&mut encoder, &self.globals, 0, bytemuck::bytes_of(&globals));
@@ -647,14 +608,13 @@ impl Renderer {
                 0,
                 bytemuck::bytes_of(&crosshair_globals),
             );
-        let cull_proj = views.cull().view_proj(pose);
         let view = Frustum {
-            planes: frustum(cull_proj),
+            planes: frustum(view_proj),
         };
         let camera = frame.camera;
-        let camera_section = camera_section(camera, self.layout.min_y());
-        let eye = projection_center(cull_proj).filter(|_| self.sides_on);
-        let culling = !path_frame && !frame.title && frame.cave_culling;
+        let camera_section = camera_section(camera);
+        let eye = projection_center(view_proj).filter(|_| self.sides_on);
+        let culling = !path_frame && (!frame.title && frame.cave_culling);
         if culling {
             crate::spans::time(
                 "occlusion",
@@ -663,11 +623,6 @@ impl Renderer {
         }
         let reachable = &self.occlusion;
         let cutout = &self.lod_cutout;
-        let leaving: crate::fast_hash::FxHashSet<(i32, i32)> = self
-            .lod_leaving
-            .iter()
-            .map(|&((x, _, z), _)| (x, z))
-            .collect();
         let mut visible = std::mem::take(&mut self.visible);
         visible.clear();
         crate::spans::time(
@@ -679,15 +634,11 @@ impl Renderer {
                         (frame.detail_distance / 16.0) as i32,
                         &view,
                         |k| !culling || reachable.contains(k),
-                        |x, z| {
-                            (!cutout.is_empty() && cutout.contains(&(x, z)))
-                                || (!leaving.is_empty() && leaving.contains(&(x, z)))
-                        },
+                        |x, z| !cutout.is_empty() && cutout.contains(&(x, z)),
                         &mut visible,
                     )
             },
         );
-        let now = std::time::Instant::now();
         let mut visible_lods = std::mem::take(&mut self.visible_lods);
         visible_lods.clear();
         if frame.title {
@@ -698,7 +649,9 @@ impl Renderer {
                     self
                         .lods
                         .iter()
-                        .filter_map(|(&key, tile)| tile.visible(key, camera, &view, now)),
+                        .filter_map(|(&key, tile)| {
+                            tile.visible(key, camera, frame.distance, &view)
+                        }),
                 );
             visible_lods.sort_unstable_by_key(|v| (v.distance, v.key));
         }
@@ -756,41 +709,13 @@ impl Renderer {
                 );
         }
         self.origins.clear();
-        let (sections, retiring) = (&self.sections, &self.lod_retiring);
-        let fade_ms = fade_millis(frame.chunk_fade);
-        let uploaded = &self.section_uploaded;
-        let visibility = |key: SectionKey| {
-            if fade_ms == 0 {
-                return 1.0;
-            }
-            uploaded
-                .get(&key)
-                .map_or(
-                    1.0,
-                    |t| {
-                        chunk_visibility(
-                            now.saturating_duration_since(*t).as_millis() as u64,
-                            fade_ms,
-                        )
-                    },
-                )
-        };
         self.origins
             .extend(
                 visible
                     .iter()
-                    .map(|v| {
-                        let code = sections
-                            .get(v.slot)
-                            .fade(now, retiring.contains(&v.key));
-                        section_instance(v.origin, code, visibility(v.key))
-                    })
-                    .chain(visible_lods.iter().map(|v| lod::instance(v.origin, v.fade)))
-                    .chain(
-                        shadow_visible
-                            .iter()
-                            .map(|v| section_instance(v.origin, 0, visibility(v.key))),
-                    ),
+                    .map(|v| section_instance(v.origin))
+                    .chain(visible_lods.iter().map(|v| lod::instance(v.origin)))
+                    .chain(shadow_visible.iter().map(|v| section_instance(v.origin))),
             );
         if !self.origins.is_empty() {
             self.uploads
@@ -872,7 +797,7 @@ impl Renderer {
         let tiles = self.draws.len();
         self.solid_runs.clear();
         for (i, v) in visible_lods.iter().enumerate() {
-            let s = self.lods[&v.key].drawn();
+            let s = &self.lods[&v.key].mesh;
             let start = self.draws.len();
             let instance = (visible.len() + i) as u32;
             facing_runs(
@@ -907,7 +832,7 @@ impl Renderer {
                 let scheduled = (i + count - self.translucency_cursor) % count < budget;
                 let origin = [
                     v.key.0 * 16,
-                    self.layout.min_y() + v.key.1 * 16,
+                    crate::chunk::MIN_Y + v.key.1 * 16,
                     v.key.2 * 16,
                 ];
                 if (!s.sort.is_sorted() || nearby || scheduled)
@@ -943,7 +868,7 @@ impl Renderer {
         for (i, v) in visible_lods.iter().enumerate() {
             let instance = visible.len() + i;
             let tile = self.lods.get_mut(&v.key).expect("visible resident tile");
-            let s = tile.drawn_mut();
+            let s = &mut tile.mesh;
             if let Some((index_page, index_start)) = s.sorted_indices {
                 let scheduled = (instance + count - self.translucency_cursor) % count
                     < budget;
@@ -981,19 +906,8 @@ impl Renderer {
             }
         }
         if self.translucent_draws.len() > section_translucent {
-            let tier = |instance: usize| match instance.checked_sub(visible.len()) {
-                None => 0,
-                Some(tile) if visible_lods[tile].old => 2,
-                Some(_) => 1,
-            };
             self.translucent_draws
-                .sort_unstable_by_key(|&(distance, instance, ..)| {
-                    (
-                        tier(instance),
-                        std::cmp::Reverse(distance),
-                        std::cmp::Reverse(instance),
-                    )
-                });
+                .sort_unstable_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
         }
         for &(_, _, draw, pages) in &self.translucent_draws {
             self.draws.push(draw);
@@ -1022,7 +936,7 @@ impl Renderer {
                 {
                     let origin = [
                         v.key.0 * 16,
-                        self.layout.min_y() + v.key.1 * 16,
+                        crate::chunk::MIN_Y + v.key.1 * 16,
                         v.key.2 * 16,
                     ];
                     if let Some(indices) = s
@@ -1174,19 +1088,15 @@ impl Renderer {
             );
             entities = &self.pack_entity_rest;
         }
-        let oit_on = !path_frame && self.improved_transparency && !frame.title
-            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
-            && self.native.is_none() && oit::supported(&self.device);
-        let [entity_quads, text_quads, crumbling_quads, translucent_crumbling_quads,
+        let [entity_quads, crumbling_quads, translucent_crumbling_quads,
         water_mask_quads, swirl_quads, shadow_quads, translucent_particle_quads,
-        translucent_item_quads, oit_entity_quads] = self
+        translucent_item_quads] = self
             .entity_batch
-            .update(entities, frame.additive, frame.hand, frame.see_through, oit_on);
+            .update(entities, frame.additive, frame.hand, frame.see_through);
         let weather_quads = frame.weather.len() as u32 / 4;
-        let world_quads = entity_quads + text_quads + crumbling_quads
-            + translucent_crumbling_quads + water_mask_quads + swirl_quads + shadow_quads
-            + translucent_particle_quads + translucent_item_quads + oit_entity_quads;
-        let base_quads = world_quads - oit_entity_quads;
+        let world_quads = entity_quads + crumbling_quads + translucent_crumbling_quads
+            + water_mask_quads + swirl_quads + shadow_quads + translucent_particle_quads
+            + translucent_item_quads;
         let cloud_quads = if let Some(input) = &frame.clouds {
             let (rebuilt, uniform) = crate::spans::time(
                 "clouds",
@@ -1238,8 +1148,7 @@ impl Renderer {
             );
         let all_entities = &self.entity_batch.combined;
         let hand_quads = (frame.hand.len() / 4) as u32;
-        let additive_quads = (frame.additive.len() / 4) as u32
-            - self.entity_batch.moved_additive;
+        let additive_quads = (frame.additive.len() / 4) as u32;
         let see_through_quads = (frame.see_through.len() / 4) as u32;
         let entity_vertices = all_entities.len() as u64;
         if entity_vertices > self.entity_capacity {
@@ -1278,7 +1187,7 @@ impl Renderer {
                 .prepare(
                     &mut self.uploads,
                     &mut encoder,
-                    jittered * rotation,
+                    view_proj * rotation,
                     brightness,
                 );
         }
@@ -1386,7 +1295,7 @@ impl Renderer {
             ) if self.flat_on && !self.draws.is_empty()
                 && (self.drawn_sections >= flat.min_sections || pack_terrain
                     || shadow_view.is_some()) => {
-                let (sections, retiring) = (&self.sections, &self.lod_retiring);
+                let sections = &self.sections;
                 let lods = &self.lods;
                 let sorted = &self.sorted_indices;
                 let phase2 = self.cull.as_ref().filter(|_| culling).map(|c| &c.phase2);
@@ -1408,19 +1317,15 @@ impl Renderer {
                                 .iter()
                                 .chain(&shadow_visible)
                                 .filter_map(|v| {
-                                    let section = sections.get(v.slot);
-                                    let code = section.fade(now, retiring.contains(&v.key));
-                                    Some((
-                                        section.flat_id?,
-                                        section_instance(v.origin, code, visibility(v.key)),
-                                    ))
+                                    let id = sections.get(v.slot).flat_id?;
+                                    Some((id, section_instance(v.origin)))
                                 })
                                 .chain(
                                     visible_lods
                                         .iter()
                                         .filter_map(|v| {
-                                            let id = lods[&v.key].drawn().flat_id?;
-                                            Some((id, lod::instance(v.origin, v.fade)))
+                                            let id = lods[&v.key].mesh.flat_id?;
+                                            Some((id, lod::instance(v.origin)))
                                         }),
                                 ),
                             |page| sorted.buffer(page).clone(),
@@ -1468,10 +1373,10 @@ impl Renderer {
         if let Some(timer) = &mut self.gpu_timer {
             timer.begin(&mut encoder);
         }
-        let pack_post = !path_frame && !frame.title
-            && self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
-        let native_post = !path_frame && !frame.title
-            && self.native.as_ref().is_some_and(|n| n.post.is_some());
+        let pack_post = !path_frame
+            && (!frame.title && self.pack_post.as_ref().is_some_and(|p| p.1.is_some()));
+        let native_post = !path_frame
+            && (!frame.title && self.native.as_ref().is_some_and(|n| n.post.is_some()));
         if let Some(timer) = Self::pass_timer(&mut self.pack_post, &mut self.native)
             && timer.is_some() != self.pass_timing
         {
@@ -1481,7 +1386,6 @@ impl Renderer {
                 .flatten();
         }
         let pack_reads_world = pack_post || native_post;
-        let keep_depth = pack_reads_world || (taa && self.world_post.taa) || oit_on;
         let pack_draws_terrain = pack_terrain && flat_frame == self.pack_terrain_flat;
         let pack_draws_shadow = shadow_view.is_some()
             && flat_frame == self.pack_terrain_flat;
@@ -1552,50 +1456,6 @@ impl Renderer {
             if culling && let Some(cull) = &mut self.cull {
                 cull.bind_depth(&self.device, world_depth);
             }
-            if oit_on {
-                let size = self
-                    .world_post
-                    .size()
-                    .filter(|_| scaled.is_some())
-                    .unwrap_or([self.config.width, self.config.height]);
-                let (device, layout, sprites) = (
-                    &self.device,
-                    &self.terrain_layout,
-                    self.terrain_sprites,
-                );
-                let clouds = [0, 1]
-                    .map(|i| self.cloud_pipeline.get_bind_group_layout(i));
-                let format = self.config.format.remove_srgb_suffix();
-                let flat = self
-                    .flat
-                    .as_ref()
-                    .map(|f| f.translucent.get_bind_group_layout(1));
-                let features = [
-                    self.entity_pipeline.get_bind_group_layout(0),
-                    self.weather.pipeline().get_bind_group_layout(1),
-                    self.border_pipeline.get_bind_group_layout(0),
-                ];
-                self.oit
-                    .get_or_insert_with(|| {
-                        oit::Oit::new(
-                            device,
-                            layout,
-                            flat.as_ref(),
-                            [&features[0], &features[1], &features[2]],
-                            [&clouds[0], &clouds[1]],
-                            sprites,
-                            format,
-                        )
-                    })
-                    .prepare(
-                        &self.device,
-                        &self.queue,
-                        size,
-                        &views.primary().projection,
-                        [water_mask_quads > 0, cloud_quads > 0],
-                    );
-            }
-            let oit = self.oit.as_ref().filter(|_| oit_on);
             let cull = self.cull.as_ref().filter(|_| culling && solid_draws > 0);
             let clear = if frame.title
                 || (frame.end_sky && !frame.underwater && sky_open(frame))
@@ -1703,7 +1563,7 @@ impl Renderer {
                                 view: world_depth,
                                 depth_ops: Some(wgpu::Operations {
                                     load: wgpu::LoadOp::Clear(0.0),
-                                    store: if cull.is_some() || keep_depth {
+                                    store: if cull.is_some() || pack_reads_world {
                                         wgpu::StoreOp::Store
                                     } else {
                                         wgpu::StoreOp::Discard
@@ -1789,7 +1649,7 @@ impl Renderer {
                                     &mut encoder,
                                     world_view,
                                     world_depth,
-                                    keep_depth,
+                                    pack_reads_world,
                                 );
                                 pass.set_bind_group(0, &self.group, &[]);
                                 pack_frame(&mut pass);
@@ -1833,7 +1693,7 @@ impl Renderer {
                                     &mut encoder,
                                     world_view,
                                     world_depth,
-                                    keep_depth,
+                                    pack_reads_world,
                                 );
                                 pass.set_bind_group(0, &self.group, &[]);
                                 pack_frame(&mut pass);
@@ -1868,93 +1728,77 @@ impl Renderer {
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(0..entity_quads * 6, 0, 0..1);
-                    if self.hdr.is_some() {
-                        pass.set_pipeline(&self.hdr_mark_pipeline);
-                        pass.draw_indexed(0..entity_quads * 6, 0, 0..1);
-                    }
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if text_quads > 0 && !oit_on {
-                    pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                    pass.set_bind_group(0, &self.entity_group, &[]);
-                    pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                    pass.draw_indexed(
-                        0..text_quads * 6,
-                        (entity_quads * 4) as i32,
-                        0..1,
-                    );
-                    pass.set_bind_group(0, &self.group, &[]);
-                }
-                if translucent_item_quads > 0 && !oit_on {
+                if translucent_item_quads > 0 {
                     pass.set_pipeline(&self.translucent_item_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..translucent_item_quads * 6,
-                        ((base_quads - translucent_item_quads) * 4) as i32,
+                        ((world_quads - translucent_item_quads) * 4) as i32,
                         0..1,
                     );
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if !pack_draws_weather && !oit_on {
+                if !pack_draws_weather {
                     self.weather.draw(&mut pass, &self.entity_group);
                 }
                 pass.set_bind_group(0, &self.group, &[]);
-                if crumbling_quads > 0 && !oit_on {
+                if crumbling_quads > 0 {
                     pass.set_pipeline(&self.crumbling_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..crumbling_quads * 6,
-                        ((entity_quads + text_quads) * 4) as i32,
+                        (entity_quads * 4) as i32,
                         0..1,
                     );
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if shadow_quads > 0 && !oit_on {
+                if shadow_quads > 0 {
                     pass.set_pipeline(&self.shadow_blob_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..shadow_quads * 6,
-                        ((base_quads - translucent_item_quads
+                        ((world_quads - translucent_item_quads
                             - translucent_particle_quads - shadow_quads) * 4) as i32,
                         0..1,
                     );
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if water_mask_quads > 0 && !oit_on {
+                if water_mask_quads > 0 {
                     pass.set_pipeline(&self.water_mask_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..water_mask_quads * 6,
-                        ((entity_quads + text_quads + crumbling_quads
-                            + translucent_crumbling_quads) * 4) as i32,
+                        ((entity_quads + crumbling_quads + translucent_crumbling_quads)
+                            * 4) as i32,
                         0..1,
                     );
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if !frame.lightning.bolts.is_empty() && !oit_on {
+                if !frame.lightning.bolts.is_empty() {
                     pass.set_pipeline(&self.lightning_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     self.lightning.draw(&mut pass, &frame.lightning);
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if swirl_quads > 0 && !oit_on {
+                if swirl_quads > 0 {
                     pass.set_pipeline(&self.energy_swirl_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..swirl_quads * 6,
-                        ((entity_quads + text_quads + crumbling_quads
-                            + translucent_crumbling_quads + water_mask_quads) * 4)
-                            as i32,
+                        ((entity_quads + crumbling_quads + translucent_crumbling_quads
+                            + water_mask_quads) * 4) as i32,
                         0..1,
                     );
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if additive_quads > 0 && !oit_on {
+                if additive_quads > 0 {
                     pass.set_pipeline(&self.additive_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
@@ -1984,182 +1828,6 @@ impl Renderer {
                 }
                 match self.flat.as_ref().filter(|_| flat_frame) {
                     _ if pack_draws_water => {}
-                    flat if let Some(oit) = oit => {
-                        drop(pass);
-                        let mask = |pass: &mut wgpu::RenderPass<'_>| {
-                            pass.set_pipeline(&self.water_mask_pipeline);
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_index_buffer(
-                                self.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                            pass.draw_indexed(
-                                0..water_mask_quads * 6,
-                                ((entity_quads + text_quads + crumbling_quads
-                                    + translucent_crumbling_quads) * 4) as i32,
-                                0..1,
-                            );
-                        };
-                        let clouds = |
-                            pass: &mut wgpu::RenderPass<'_>,
-                            pipeline: &wgpu::RenderPipeline|
-                        {
-                            pass.set_pipeline(pipeline);
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_bind_group(1, &self.cloud_group, &[]);
-                            pass.set_index_buffer(
-                                self.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            pass.set_vertex_buffer(0, self.cloud_buffer.slice(..));
-                            pass.draw_indexed(0..cloud_quads * 6, 0, 0..1);
-                        };
-                        let features = |
-                            pass: &mut wgpu::RenderPass<'_>,
-                            stage: oit::Stage|
-                        {
-                            let f = oit.features();
-                            let s = stage as usize;
-                            pass.set_index_buffer(
-                                self.indices.slice(..),
-                                wgpu::IndexFormat::Uint32,
-                            );
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                            let quads = |
-                                pass: &mut wgpu::RenderPass<'_>,
-                                pipeline: &wgpu::RenderPipeline,
-                                count: u32,
-                                first: u32|
-                            {
-                                if count > 0 {
-                                    pass.set_pipeline(pipeline);
-                                    pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
-                                }
-                            };
-                            quads(pass, &f.text[s], text_quads, entity_quads);
-                            quads(
-                                pass,
-                                &f.crumbling[s],
-                                crumbling_quads,
-                                entity_quads + text_quads,
-                            );
-                            quads(
-                                pass,
-                                &f.crumbling[s],
-                                translucent_crumbling_quads,
-                                entity_quads + text_quads + crumbling_quads,
-                            );
-                            quads(
-                                pass,
-                                &f.swirl[s],
-                                swirl_quads,
-                                entity_quads + text_quads + crumbling_quads
-                                    + translucent_crumbling_quads + water_mask_quads,
-                            );
-                            quads(
-                                pass,
-                                &f.shadow[s],
-                                shadow_quads,
-                                base_quads - translucent_item_quads
-                                    - translucent_particle_quads - shadow_quads,
-                            );
-                            quads(
-                                pass,
-                                &f.entity[s],
-                                translucent_particle_quads,
-                                base_quads - translucent_item_quads
-                                    - translucent_particle_quads,
-                            );
-                            quads(
-                                pass,
-                                &f.entity[s],
-                                translucent_item_quads,
-                                base_quads - translucent_item_quads,
-                            );
-                            quads(pass, &f.entity[s], oit_entity_quads, base_quads);
-                            if !frame.lightning.bolts.is_empty() {
-                                pass.set_pipeline(&f.lightning[s]);
-                                self.lightning.draw(pass, &frame.lightning);
-                                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                            }
-                            quads(pass, &f.additive[s], additive_quads, world_quads);
-                            self.weather
-                                .draw_with(pass, &f.weather[s], &self.entity_group);
-                            if let Some(b) = frame
-                                .border
-                                .as_ref()
-                                .filter(|_| !frame.title)
-                            {
-                                pass.set_pipeline(&f.border[s]);
-                                pass.set_bind_group(0, &self.border_group, &[]);
-                                pass.set_vertex_buffer(0, self.border_vertices.slice(..));
-                                for &side in &b.sides {
-                                    let first = side as u32 * 6;
-                                    pass.draw_indexed(first..first + 6, 0, 0..1);
-                                }
-                            }
-                        };
-                        let extras = oit::Extras {
-                            water_mask: (water_mask_quads > 0).then_some(&mask as _),
-                            clouds: (cloud_quads > 0).then_some(&clouds as _),
-                            features: Some(&features),
-                        };
-                        oit.run(
-                            &mut encoder,
-                            world_view,
-                            world_depth,
-                            &|pass, stage| {
-                                pass.set_bind_group(0, &self.group, &[]);
-                                if let Some((flat, pipeline)) = flat.zip(oit.flat(stage)) {
-                                    pass.set_pipeline(pipeline);
-                                    flat.draw(
-                                        pass,
-                                        flat.translucent_calls(),
-                                        |p| { self.arena.buffer(p) },
-                                    );
-                                    return;
-                                }
-                                pass.set_pipeline(oit.terrain(stage));
-                                pass.set_index_buffer(
-                                    self.indices.slice(..),
-                                    wgpu::IndexFormat::Uint32,
-                                );
-                                pass.set_vertex_buffer(1, self.instances.slice(..));
-                                self.draw_sections(
-                                    pass,
-                                    &self.indirect,
-                                    0,
-                                    solid_draws,
-                                    translucent_draws,
-                                );
-                            },
-                            &extras,
-                        );
-                        pass = world_pass_after_culling(
-                            &mut encoder,
-                            world_view,
-                            world_depth,
-                            true,
-                        );
-                        pass.set_bind_group(0, &self.group, &[]);
-                        pass.set_index_buffer(
-                            self.indices.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        if oit_entity_quads > 0 && self.hdr.is_some() {
-                            pass.set_pipeline(&self.hdr_mark_pipeline);
-                            pass.set_bind_group(0, &self.entity_group, &[]);
-                            pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                            pass.draw_indexed(
-                                0..oit_entity_quads * 6,
-                                (base_quads * 4) as i32,
-                                0..1,
-                            );
-                            pass.set_bind_group(0, &self.group, &[]);
-                        }
-                    }
                     Some(flat) => {
                         pass.set_pipeline(pack_flat.map_or(&flat.translucent, |p| &p.1));
                         flat.draw(
@@ -2189,7 +1857,7 @@ impl Renderer {
                         );
                     }
                 }
-                if translucent_particle_quads > 0 && !oit_on {
+                if translucent_particle_quads > 0 {
                     pass.set_pipeline(&self.entity_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_index_buffer(
@@ -2199,7 +1867,7 @@ impl Renderer {
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..translucent_particle_quads * 6,
-                        ((base_quads - translucent_item_quads
+                        ((world_quads - translucent_item_quads
                             - translucent_particle_quads) * 4) as i32,
                         0..1,
                     );
@@ -2213,11 +1881,7 @@ impl Renderer {
                     );
                 }
                 pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-                if let Some(b) = frame
-                    .border
-                    .as_ref()
-                    .filter(|_| !frame.title && !oit_on)
-                {
+                if let Some(b) = frame.border.as_ref().filter(|_| !frame.title) {
                     pass.set_pipeline(&self.border_pipeline);
                     pass.set_bind_group(0, &self.border_group, &[]);
                     pass.set_index_buffer(
@@ -2231,17 +1895,17 @@ impl Renderer {
                     }
                     pass.set_bind_group(0, &self.group, &[]);
                 }
-                if translucent_crumbling_quads > 0 && !oit_on {
+                if translucent_crumbling_quads > 0 {
                     pass.set_pipeline(&self.crumbling_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(
                         0..translucent_crumbling_quads * 6,
-                        ((entity_quads + text_quads + crumbling_quads) * 4) as i32,
+                        ((entity_quads + crumbling_quads) * 4) as i32,
                         0..1,
                     );
                 }
-                if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
+                if cloud_quads > 0 && !pack_draws_clouds {
                     pass.set_pipeline(&self.cloud_pipeline);
                     pass.set_bind_group(0, &self.entity_group, &[]);
                     pass.set_bind_group(1, &self.cloud_group, &[]);
@@ -2366,7 +2030,7 @@ impl Renderer {
                     native.timing.as_mut(),
                 );
             } else if scaled.is_some() {
-                self.world_post.finish(&self.queue, &mut encoder, &view_target);
+                self.world_post.finish(&mut encoder, &view_target);
             }
         }
         if let Some(hdr) = &self.hdr {
@@ -2409,59 +2073,10 @@ impl Renderer {
                 ((world_quads + additive_quads) * 4) as i32,
                 0..1,
             );
-            drop(pass);
-            if let Some(hdr) = &self.hdr {
-                hdr.mark_hand(&mut encoder);
-            }
         }
         if !path_frame {
             self.entity_outline
                 .draw(&mut encoder, &view_target, &self.entity_group, &self.indices);
-        }
-        let native_pt_capture = if path_frame
-            && crate::native_pt_config::snapshot().denoise
-            && self.screenshot.as_ref().is_some_and(|request| request.size.is_none())
-        {
-            if state.pending.is_none() {
-                state
-                    .tracer
-                    .as_mut()
-                    .and_then(|tracer| tracer.capture(&self.device, &mut encoder))
-                    .and_then(|capture| {
-                        self.screenshot.take().map(|request| (request, capture))
-                    })
-            } else {
-                self.screenshot.take();
-                self.screenshot_result = Some(
-                    Err("PT screenshot is still processing".into()),
-                );
-                None
-            }
-        } else {
-            None
-        };
-        let readback = self
-            .screenshot
-            .take_if(|request| request.size.is_some())
-            .and_then(|request| {
-                self.take_readback(request, &mut encoder, &target_texture)
-            });
-        if !frame.title && !frame.post_effects.effects.is_empty()
-            && target_texture.usage().contains(wgpu::TextureUsages::COPY_SRC)
-        {
-            let device = &self.device;
-            self.post_effects
-                .get_or_insert_with(|| crate::post_chain::PostEffects::new(device))
-                .apply(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    &target_texture,
-                    &view_target,
-                    [self.config.width, self.config.height],
-                    scaled.is_none().then_some(&self.depth),
-                    &frame.post_effects,
-                );
         }
         if !frame.screen.is_empty() {
             let attachments = [
@@ -2579,35 +2194,53 @@ impl Renderer {
                     (&view_target, self.config.format.remove_srgb_suffix()),
                 );
         }
-        let readback = readback
-            .or_else(|| {
-                self.screenshot
-                    .take()
-                    .and_then(|request| {
-                        self.take_readback(request, &mut encoder, &target_texture)
+        let native_pt_capture = if path_frame
+            && crate::native_pt_config::snapshot().denoise && self.screenshot.is_some()
+        {
+            if state.pending.is_none() {
+                state
+                    .tracer
+                    .as_mut()
+                    .and_then(|tracer| tracer.capture(&self.device, &mut encoder))
+                    .and_then(|capture| {
+                        self.screenshot.take().map(|request| (request, capture))
                     })
+            } else {
+                self.screenshot.take();
+                self.screenshot_result = Some(
+                    Err("PT screenshot is still processing".into()),
+                );
+                None
+            }
+        } else {
+            None
+        };
+        let readback = self
+            .screenshot
+            .take()
+            .and_then(|path| {
+                if self.config.format.block_copy_size(None) == Some(4) {
+                    Some((path, self.copy_frame(&mut encoder, &target_texture)))
+                } else {
+                    self.screenshot_result = Some(
+                        Err(
+                            format!(
+                                "screenshots need a 32-bit surface format, not {:?}", self
+                                .config.format
+                            ),
+                        ),
+                    );
+                    None
+                }
             });
         self.uploads.finish(&encoder);
         if has_section_copies {
             self.section_copy_bytes = 0;
             self.section_uploads.finish(&encoder);
         }
-        if let Some(f) = &surface_frame {
-            self.readback.present(&self.device, &mut encoder, &f.texture);
-        }
         if let (Some(hdr), Some(f)) = (&self.hdr, &surface_frame) {
             hdr.present(&self.queue, &mut encoder, &f.texture, !frame.title);
         }
-        let hdr_readback = readback
-            .as_ref()
-            .filter(|(request, _)| request.size.is_none())
-            .zip(self.hdr.as_ref())
-            .and_then(|(_, hdr)| {
-                let texture = hdr
-                    .capture(&self.device, &self.queue, &mut encoder, !frame.title)?;
-                let size = [self.config.width, self.config.height];
-                Some(copy_frame(&self.device, &mut encoder, &texture, size))
-            });
         let commands = crate::spans::time("encode", || encoder.finish());
         let first_frame = self.first_frame == FirstFrame::Submit;
         if first_frame {
@@ -2631,23 +2264,9 @@ impl Renderer {
         ) {
             timer.submitted(&self.queue);
         }
-        if let Some((request, buffer)) = readback {
-            if let Some(hdr_buffer) = hdr_readback {
-                let hdr_path = hdr_screenshot_path(&request.path);
-                match self.write_hdr_screenshot(&hdr_path, &hdr_buffer) {
-                    Ok(()) => {
-                        log::info!("Saved HDR screenshot to {}", hdr_path.display())
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Horizon renderer: HDR screenshot {}: {e}", hdr_path
-                            .display()
-                        )
-                    }
-                }
-            }
+        if let Some((path, buffer)) = readback {
             self.screenshot_result = Some(
-                self.write_screenshot(&request, &buffer).map_err(|e| e.to_string()),
+                self.write_screenshot(&path, &buffer).map_err(|e| e.to_string()),
             );
         }
         let present = Instant::now();

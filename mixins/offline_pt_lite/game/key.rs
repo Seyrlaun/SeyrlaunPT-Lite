@@ -1,3 +1,10 @@
-fn input(game: &mut Game<'_>, key: &str, pressed: bool) {
-    offline_pt_native_ui::key(game, key, pressed);
+fn offline_pt_lite_key(
+    game: &mut crate::game::Game<'_>,
+    key: winit::keyboard::KeyCode,
+) -> std::ops::ControlFlow<Result<()>> {
+    if crate::game::offline_pt_ui::key(game, key) {
+        std::ops::ControlFlow::Break(Ok(()))
+    } else {
+        std::ops::ControlFlow::Continue(())
+    }
 }

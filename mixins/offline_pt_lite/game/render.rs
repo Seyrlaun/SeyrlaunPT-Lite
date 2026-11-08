@@ -1,62 +1,12 @@
 use super::*;
 impl Game<'_> {
     pub(super) fn native_pt_render(&mut self) -> Result<bool> {
-        let mut native_pt_options = horizon_client::native_pt_config::snapshot();
-        native_pt_options.enabled &= self.native_on("offline_pt_lite");
-        self.glint_frame = self.capture_glint_frame();
-        if self.renderer.as_mut().is_some_and(|r| r.display_changed()) {
-            self.apply_ui_settings();
-        }
-        if self.integrated_starting.is_some() {
-            if let Some(renderer) = &mut self.renderer {
-                let mut hud = HudBatch::new([
-                    renderer.config.width,
-                    renderer.config.height,
-                ]);
-                let (w, h) = (hud.width, hud.height);
-                horizon_client::ui::menu_background(
-                    &mut hud,
-                    &self.gui.atlas,
-                    0.0,
-                    0.0,
-                    w,
-                    h,
-                    false,
-                );
-                let view = self
-                    .integrated_starting
-                    .as_ref()
-                    .map(|s| s.handle.load_view().clone());
-                let status = |x: i32, z: i32| view.as_ref().and_then(|v| v.status(x, z));
-                let progress = view
-                    .as_ref()
-                    .is_some_and(|v| v.has_progress())
-                    .then_some(self.loading_progress);
-                horizon_client::level_loading::draw(
-                    &mut hud,
-                    &self.gui.atlas,
-                    Some(&status),
-                    progress,
-                );
-                return renderer.render(&loading_frame(&hud));
-            }
-            return Ok(false);
-        }
         if let Some(loader) = &self.world_loader {
             if let Some(renderer) = &mut self.renderer {
                 let mut hud = HudBatch::new([
                     renderer.config.width,
                     renderer.config.height,
                 ]);
-                if loader.upgrade.is_file_fixing() && !loader.cancelled {
-                    horizon_client::level_loading::draw_file_fixer(
-                        &mut hud,
-                        &self.gui.atlas,
-                        &loader.upgrade,
-                        self.cursor,
-                    );
-                    return renderer.render(&loading_frame(&hud));
-                }
                 horizon_client::level_loading::draw_progress(
                     &mut hud,
                     &self.gui.atlas,
@@ -86,18 +36,17 @@ impl Game<'_> {
             }
             return Ok(false);
         }
-        if let Some(reload) = &self.pack_reload {
+        if let Some(reload) = &self.server_packs.reload {
             if let Some(renderer) = &mut self.renderer {
                 let mut hud = HudBatch::new([
                     renderer.config.width,
                     renderer.config.height,
                 ]);
-                horizon_client::level_loading::draw_loading_overlay(
+                horizon_client::level_loading::draw_progress(
                     &mut hud,
                     &self.gui.atlas,
                     reload.progress.line(),
                     reload.progress.fraction(),
-                    self.settings.file.bool("darkMojangStudiosBackground"),
                 );
                 return renderer.render(&loading_frame(&hud));
             }
@@ -121,6 +70,7 @@ impl Game<'_> {
             }
             None => (glam::DVec3::new(0.5, 100.0, 0.5), false, self.yaw, self.pitch),
         };
+        let (view_yaw, view_pitch) = self.shaken_view(view_yaw, view_pitch);
         self.audio.set_listener([camera.x, camera.y, camera.z], view_yaw, view_pitch);
         let block = [
             camera.x.floor() as i32,
@@ -198,9 +148,12 @@ impl Game<'_> {
             sky.sky_light_factor = 1.0;
         }
         let mut lines = self.fishing_line(alpha, size);
-        let g = self.debug_gizmos(alpha as f32, camera.to_array());
-        lines.extend(g.lines);
-        let on_top = g.on_top;
+        let mut on_top = Vec::new();
+        if self.show_hitboxes || self.show_chunk_borders {
+            let g = self.debug_gizmos(alpha as f32);
+            lines.extend(g.lines);
+            on_top = g.on_top;
+        }
         let view = horizon_client::camera::view_matrix(view_yaw, view_pitch);
         let at = camera.to_array();
         let mut crosshair = horizon_client::gizmos::Gizmos::default();
@@ -221,13 +174,10 @@ impl Game<'_> {
             view,
         );
         let mut outline_after_terrain = false;
-        let adventure = self.mode == horizon_client::command::args::GameMode::Adventure;
-        let outline = if !self.ui.hide_gui && (self.may_build() || adventure) {
+        let outline = if self.screen == Screen::Playing && !self.ui.hide_gui
+            && self.may_build()
+        {
             self.pick()
-                .filter(|h| {
-                    self.may_build() || !self.block_action_restricted(h.pos)
-                        || self.can_place_on_in_adventure(h.pos)
-                })
                 .map(|h| {
                     let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
                     let f = self.res.facts().get(state);
@@ -272,11 +222,9 @@ impl Game<'_> {
             Vec::new()
         };
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
-        self.flush_ime(&mut hud);
         let title = self.title.is_some()
             || self.loading_reason()
-                == Some(horizon_client::level_loading::Reason::Other)
-            || self.remote_loading();
+                == Some(horizon_client::level_loading::Reason::Other);
         let (yaw, pitch) = if title {
             (
                 self
@@ -307,7 +255,6 @@ impl Game<'_> {
         } else {
             self.spinning_matrix(camera_alpha as f32)
         };
-        let requested_post_effects = self.requested_post_effects();
         let terrain_distance = self.terrain_distance();
         let distance = (terrain_distance * 16) as f32;
         let depth_far = horizon_client::camera::depth_far(
@@ -328,7 +275,7 @@ impl Game<'_> {
                 || { self.entity_geometry(camera, alpha, entities) },
             );
         }
-        let bolts = if title { Vec::new() } else { self.bolt_instances(camera) };
+        let bolts = if title { Vec::new() } else { self.bolt_instances() };
         let mut additive = Vec::new();
         if !title && self.dim == Dim::End {
             let mut dragon = Vec::new();
@@ -348,25 +295,15 @@ impl Game<'_> {
         } else {
             (Vec::new(), None)
         };
-        let mut hand = if title || self.scoping() {
+        let hand = if title || self.scoping() {
             Vec::new()
         } else {
             self.hand_geometry(camera_alpha)
         };
-        if !title {
-            let view = bob * horizon_client::camera::view_matrix(yaw, pitch);
-            let aspect = size[0] as f32 / size[1].max(1) as f32;
-            self.item_activation_geometry(camera_alpha as f32, view, aspect, &mut hand);
-        }
         let screen = if title {
             Vec::new()
         } else {
-            let scale = self
-                .player
-                .as_mut()
-                .and_then(|p| p.attribute("minecraft:scale").ok())
-                .unwrap_or(1.0) as f32;
-            self.screen_quads(alpha as f32, size, scale)
+            self.screen_quads(alpha as f32, size)
         };
         if !title {
             self.end_geometry(camera, &mut entities);
@@ -437,7 +374,19 @@ impl Game<'_> {
                 .then_some((sky.fog_start, sky.fog_end)),
             cave_culling,
             water_fog,
-            fog: Some(self.frame_fog(camera, &sky, biome, water_fog)),
+            fog: Some({
+                let mut fog = self.frame_fog(camera, &sky, biome, water_fog);
+                if !self.settings.horizon.fog && !underwater
+                    && self.darkness_fog().is_none()
+                    && !self.boss_overlay.should_create_world_fog()
+                    && self.potions.effects.get("blindness").is_none()
+                    && fog.environmental_end >= (self.streaming.radius * 16) as f32
+                {
+                    (fog.render_distance_start, fog.render_distance_end) = (1e9, 2e9);
+                    (fog.environmental_start, fog.environmental_end) = (1e9, 2e9);
+                }
+                fog
+            }),
             dark_disc: self.dark_disc(camera),
             outline,
             outline_after_terrain,
@@ -446,8 +395,8 @@ impl Game<'_> {
             debug_lines_on_top: &debug_lines_on_top,
             debug_crosshair: &debug_crosshair,
             hud: &hud,
-            glint_alpha: self.glint_frame.alpha,
-            glint_ticks: self.glint_frame.scroll_ticks(),
+            glint_alpha: self.settings.file.double("glintStrength") as f32,
+            glint_ticks: self.glint_ticks(),
             clouds: (!title && self.dim == Dim::Overworld
                 && horizon_client::clouds::visible(
                     &self.settings.clouds,
@@ -471,9 +420,7 @@ impl Game<'_> {
             dynamic_lights: &self.dynamic_lights,
             lightning: horizon_client::gfx::lightning::Input {
                 bolts: &bolts,
-                uv: horizon_client::gfx::lightning::white_uv(
-                    &self.gui.atlas.font.white(),
-                ),
+                uv: [self.gui.atlas.font.white().u0, self.gui.atlas.font.white().v0],
             },
             additive: &additive,
             see_through: &see_through,
@@ -508,35 +455,15 @@ impl Game<'_> {
             block_flicker: self.fog.block_light_flicker,
             boss_darken: self.boss_overlay.darken_amount(self.clock.fraction() as f32),
             menu_blur: self.menu_blur(),
-            post_effects: horizon_client::post_chain::Request {
-                effects: &requested_post_effects,
-                root: &self.options.resources,
-                menu_blur_radius: self.settings.menu_blur as f32,
-                globals: horizon_client::post_chain::Globals {
-                    camera_block_pos: [
-                        camera.x.floor() as i32,
-                        camera.y.floor() as i32,
-                        camera.z.floor() as i32,
-                    ],
-                    camera_offset: [
-                        (camera.x.floor() - camera.x) as f32,
-                        (camera.y.floor() - camera.y) as f32,
-                        (camera.z.floor() - camera.z) as f32,
-                    ],
-                    game_time: ((self.world.game_time % 24000) as f32 + alpha as f32)
-                        / 24000.0,
-                    ..Default::default()
-                },
-            },
-            chunk_fade: self.settings.chunk_fade,
         };
-        let path_tracer_ready = !title && self.loading_reason().is_none();
+        let native_pt_options = horizon_client::native_pt_config::snapshot();
+        let native_pt_world_ready = !title && self.loading_reason().is_none();
         let result = match self.renderer.as_mut() {
             Some(renderer) => {
                 renderer
                     .sync_path_tracer(
                         &native_pt_options,
-                        path_tracer_ready,
+                        native_pt_world_ready,
                         &self.world,
                         &frame,
                         self.left || self.right || self.use_delay > 0,

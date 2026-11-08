@@ -1,4 +1,4 @@
-use crate::{sprite_cache::Decoded, sprites::Sprites};
+use crate::{sprites::native_pt_assets::Decoded, sprites::Sprites};
 use std::{
     collections::{BTreeMap, hash_map::DefaultHasher},
     fs, hash::{Hash, Hasher},

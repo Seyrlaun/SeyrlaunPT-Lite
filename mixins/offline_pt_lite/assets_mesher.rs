@@ -1,28 +1,21 @@
 use super::*;
 impl Mesher<'_> {
-    pub(super) fn native_pt_mesh_reusing(
+    /// `region[dz][dx]` are the chunks around the meshed column (centre 1,1).
+    pub(super) fn native_pt_mesh(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
-        mut out: SectionMesh,
-        scratch: &mut MeshScratch,
     ) -> SectionMesh {
         let native_pt_extra = self.render.model_catalog.native_pt_extra();
-        out.clear();
+        let mut out = SectionMesh::default();
         let center = region[1][1].expect("centre chunk");
         let section = &center.sections[sy as usize];
         if section.is_uniform(0) {
             return out;
         }
-        let own = scratch.own.get_or_insert_with(|| Box::new([0; 4096]));
-        scratch.padded.fill(region, sy, own);
-        let pad = &scratch.padded;
-        out.visibility = visibility_reusing(
-            pad,
-            &self.tables.info,
-            &mut scratch.visibility,
-        );
-        let base_y = center.min_y() + sy * 16;
+        let pad = Padded::new(region, sy);
+        out.visibility = visibility(&pad, &self.tables.info);
+        let base_y = MIN_Y + sy * 16;
         let mut tints = Tints::new(
             region,
             self.biomes,
@@ -64,7 +57,7 @@ impl Mesher<'_> {
                         fluid::tesselate(
                             self.tables,
                             nether,
-                            pad,
+                            &pad,
                             water,
                             &mut out,
                             [x, y, z],
@@ -120,7 +113,7 @@ impl Mesher<'_> {
                                 continue;
                             }
                             self.native_pt_face(
-                                pad,
+                                &pad,
                                 &mut tints,
                                 &mut out,
                                 [x, y, z],
@@ -159,7 +152,6 @@ impl Mesher<'_> {
         state: &Info,
     ) {
         let q = &face.quad;
-        let tier = state.tier.max(hdr_tier("", q.light_emission));
         let shade_face = q.shade_direction_override.unwrap_or(q.facing);
         let directional = lighting::cardinal(self.nether_shading, shade_face);
         let (gray, coords) = if ao {
@@ -209,7 +201,7 @@ impl Mesher<'_> {
                         } else {
                             layer as u16
                         },
-                        emitting(pack_rgb(rgb), tier),
+                        emitting(pack_rgb(rgb), state.emission.max(q.light_emission)),
                         pack_coords(lighting::with_emission(coords[i], q.light_emission)),
                     ),
                 );

@@ -1,4 +1,4 @@
-fn layout(sprites: &mut Sprites, pixels: bool) -> ::core::ops::ControlFlow<()> {
-    sprites.native_pt_lay_out(pixels);
+fn layout(sprites: &mut Sprites) -> ::core::ops::ControlFlow<()> {
+    sprites.native_pt_lay_out(true);
     ::core::ops::ControlFlow::Break(())
 }

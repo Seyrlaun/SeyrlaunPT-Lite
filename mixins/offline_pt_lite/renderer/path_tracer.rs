@@ -3693,6 +3693,32 @@ fn verify_sampling(@builtin(global_invocation_id) id: vec3<u32>) {
         );
     }
 }
+trait NativePtChunkSections {
+    fn section_index(&self, y: i32) -> Option<usize>;
+}
+impl NativePtChunkSections for crate::chunk::Chunk {
+    fn section_index(&self, y: i32) -> Option<usize> {
+        usize::try_from((i64::from(y) - i64::from(crate::chunk::MIN_Y)).div_euclid(16))
+            .ok()
+            .filter(|&index| index < self.sections.len())
+    }
+}
+#[cfg(test)]
+mod native_chunk_layout_tests {
+    use super::NativePtChunkSections;
+    #[test]
+    fn native_pt_fixed_column_index_respects_negative_and_upper_bounds() {
+        let chunk = crate::chunk::Chunk::empty(0, 0);
+        assert_eq!(chunk.section_index(i32::MIN), None);
+        assert_eq!(chunk.section_index(crate ::chunk::MIN_Y - 1), None);
+        assert_eq!(chunk.section_index(crate ::chunk::MIN_Y), Some(0));
+        assert_eq!(chunk.section_index(0), Some(4));
+        let end = crate::chunk::MIN_Y + chunk.sections.len() as i32 * 16;
+        assert_eq!(chunk.section_index(end - 1), Some(chunk.sections.len() - 1));
+        assert_eq!(chunk.section_index(end), None);
+        assert_eq!(chunk.section_index(i32::MAX), None);
+    }
+}
 pub(super) struct Capture {
     pub(super) beauty: wgpu::Buffer,
     pub(super) albedo: wgpu::Buffer,

@@ -1,5 +1,5 @@
-fn control_screenshot_guard(
-    game: &mut Game<'_>,
+fn offline_pt_lite_control_screenshot_guard(
+    game: &mut crate::game::Game<'_>,
     line: &str,
 ) -> std::ops::ControlFlow<Result<Option<Value>>> {
     let screenshot = line.split_whitespace().next() == Some("screenshot");

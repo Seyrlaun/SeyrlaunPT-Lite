@@ -1,7 +1,8 @@
 {
-  "description": "Native packaging of the preserved Offline PT Lite implementation.",
+  "description": "Seyrlaun Lite, ported to the official Horizon v0.2.97 monolithic renderer.",
   "game": "26.3",
-  "horizon": "9d979caa48a3bb58203319b9ea044db58c38e0d8",
+  "generator_engine_base": "9d979caa48a3bb58203319b9ea044db58c38e0d8",
+  "horizon": "a3acb5f0d2f59d2d5ff21a5aa000809ba1e35e2f",
   "license_scope": "Original Offline PT Lite additions and packaging; Horizon portions retain their MIT license.",
   "limitations": [
     "Exact upstream revision required; no automatic compatibility repinning.",
@@ -15,5 +16,5 @@
   "publication_status": "Local test artifact; no upload performed.",
   "release_license": "Apache-2.0",
   "upstream_license": "MIT",
-  "version": "0.1.0-alpha.2"
+  "version": "0.1.0-alpha.3"
 }

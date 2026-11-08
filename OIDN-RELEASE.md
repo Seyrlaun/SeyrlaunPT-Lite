@@ -1,4 +1,4 @@
-# Offline PT Lite: Windows OIDN Runtime
+# Seyrlaun Lite: Windows OIDN Runtime
 
 This optional Windows x64 package contains the Lite native source mod and
 unmodified Intel Open Image Denoise (OIDN) 2.5.1 runtime. It contains no game
@@ -6,10 +6,17 @@ executable, launcher, Minecraft resources, account data, worlds or external pack
 The game-side screenshot worker is Rust; there is no player-facing script and
 no automatic runtime download.
 
+Alpha.3 targets the official Horizon v0.2.97 game source (`a3acb5f`).
+It replaces alpha.2, which targeted an incompatible engine layout.
+Existing alpha.2 OIDN 2.5.1 files can stay installed; replace the `.hnmod`
+and rebuild native mods. Do not reinstall Rust or create a new world to
+work around `E_CRATE: horizon-client-render is not a workspace member`.
+
 ## Package Layout
 
 ```text
 README.md
+COMPATIBILITY-FIX.md
 LICENSE
 LICENSE-Horizon.txt
 NOTICE
@@ -70,17 +77,20 @@ Adding a mod from GitHub installs its `.hnmod` source asset, not the external
 OIDN files in this outer ZIP. The runtime copy in step 3 is still required.
 Use the complete Windows ZIP for OIDN, not GitHub's automatic source archive.
 
-For a local GUI-only install without a published GitHub release:
+For a local package without a published GitHub release:
 
 1. Copy the packaged `horizon-native-mods/offline_pt_lite.hnmod` into that
    same relative location below the chosen instance's game home.
-2. Start that ordinary instance through the original launcher, open
-   **Options > Mods**, and turn on the listed **Installed, not built**
-   Lite mod. Exit the game. This records the explicit mod-enabled choice.
-3. With that same instance selected in the launcher, turn on **Settings >
-   Game > Native mods** if it is off, then select **Build** and explicitly
-   accept the warning naming Lite.
-4. Start the resulting native build. A build from the default Horizon home
+2. Keep Lite enabled in the original launcher's native-mod selection.
+   When upgrading an already enabled Lite installation, replace only
+   `offline_pt_lite.hnmod`; retain the existing instance and settings.
+   If a fresh launcher's UI cannot select local source mods, use its
+   documented `native-build` CLI on the unpacked mod folder as above.
+   The v0.2.97 game's WebAssembly Mods screen is not Lite's settings UI.
+3. With that same instance selected in the launcher, select **Settings >
+   Game > Native mods > Build** and explicitly accept the warning naming Lite.
+4. Start the resulting native build. F6 toggles PT and F8 opens Lite
+   settings. A build from the default Horizon home
    uses the separate **Native mods** instance; it does not move the
    default instance's worlds. Select/open the world you intend to use in
    the resulting instance.
@@ -138,7 +148,7 @@ runtime silently.
 
 ## Screenshot Scope
 
-Lite alpha.2's F2 path captures accumulated radiance and matching
+Lite alpha.3's F2 path captures accumulated radiance and matching
 albedo/normal guides from the next completed full-frame film, then runs
 OIDN asynchronously with CPU device and high quality defaults. It adds no
 artificial sample-count threshold, but Lite schedules complete full-frame
@@ -208,6 +218,7 @@ LICENSE                                  # Original additions: Apache-2.0
 LICENSE-Horizon.txt                       # Existing/adapted Horizon: MIT
 NOTICE
 OIDN-RELEASE.md
+COMPATIBILITY-FIX.md
 oidn-2.5.1-windows-x64.manifest.json
 ```
 
@@ -231,7 +242,7 @@ automatic GitHub source ZIP to `.hnmod`.
 
 ```powershell
 .\tools\Package-PtNativeRelease.ps1 `
-  -NativeMod <reviewed-alpha.2.hnmod> `
+  -NativeMod <reviewed-alpha.3.hnmod> `
   -ExpectedNativeModSha256 <reviewed-64-character-SHA256> `
   -OidnArchive <oidn-2.5.1.x64.windows.zip> `
   -OutputDirectory <new-release-output-directory>

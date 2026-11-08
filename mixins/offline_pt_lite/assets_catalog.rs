@@ -122,7 +122,11 @@ mod tests {
     }
     #[test]
     fn empty_catalogs_need_no_sidecar_entry() {
-        let catalog = StateModels::default();
+        let catalog = StateModels {
+            choices: Vec::new(),
+            states: Vec::new(),
+            baked: Vec::new(),
+        };
         catalog.native_pt_set_extra(Arc::new(Extra::default()));
         assert!(catalog.native_pt_key().is_none());
         assert!(catalog.native_pt_extra().pbr.words.is_empty());
